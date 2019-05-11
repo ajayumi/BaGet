@@ -25,6 +25,7 @@ export interface ICatalogEntry {
   iconUrl: string;
   projectUrl: string;
   licenseUrl: string;
+  packageTypes: string[];
   repositoryUrl: string;
   repositoryType: string;
   authors: string;
@@ -34,7 +35,7 @@ export interface ICatalogEntry {
 
 export interface IDependencyGroup {
   targetFramework: string;
-  dependencies: IDependency[];
+  dependencies: IDependency[] | undefined;
 }
 
 export interface IDependency {

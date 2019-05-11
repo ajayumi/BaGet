@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace BaGet.Core.Configuration
 {
@@ -12,7 +12,9 @@ namespace BaGet.Core.Configuration
 
     public enum DatabaseType
     {
+        MySql,
         Sqlite,
         SqlServer,
+        PostgreSql
     }
 }

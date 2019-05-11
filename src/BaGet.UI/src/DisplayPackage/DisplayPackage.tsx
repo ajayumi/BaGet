@@ -1,8 +1,10 @@
 import { HtmlRenderer, Parser } from 'commonmark';
 import { Icon } from 'office-ui-fabric-react/lib/Icon';
 import * as React from 'react';
+import { Link } from 'react-router-dom';
 import timeago from 'timeago.js';
 import Dependencies from './Dependencies';
+import Dependents from './Dependents';
 import InstallationInfo from './InstallationInfo';
 import LicenseInfo from './LicenseInfo';
 import * as Registration from './Registration';
@@ -14,6 +16,7 @@ interface IDisplayPackageProps {
   match: {
     params: {
       id: string;
+      version?: string;
     }
   }
 }
@@ -30,9 +33,11 @@ interface IPackage {
   repositoryUrl: string;
   repositoryType: string;
   totalDownloads: number;
-  latestDownloads: number;
+  isDotnetTool: boolean;
+  downloads: number;
   authors: string;
   tags: string[];
+  version: string;
   versions: IPackageVersion[];
   dependencyGroups: Registration.IDependencyGroup[];
 }
@@ -50,6 +55,7 @@ interface IDisplayPackageState {
 class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPackageState> {
 
   private id: string;
+  private version?: string;
   private parser: Parser;
   private htmlRenderer: HtmlRenderer;
 
@@ -61,16 +67,35 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
 
     this.parser = new Parser();
     this.htmlRenderer = new HtmlRenderer();
+
     this.registrationController = new AbortController();
     this.readmeController = new AbortController();
 
     this.id = props.match.params.id;
+    this.version = props.match.params.version;
     this.state = {package: undefined};
   }
 
   public componentWillUnmount() {
     this.registrationController.abort();
     this.readmeController.abort();
+  }
+
+  public componentDidUpdate(previous: IDisplayPackageProps) {
+    // This is used to switch between versions of the same package.
+    if (previous.match.params.id !== this.props.match.params.id ||
+      previous.match.params.version !== this.props.match.params.version) {
+      this.registrationController.abort();
+      this.readmeController.abort();
+
+      this.registrationController = new AbortController();
+      this.readmeController = new AbortController();
+
+      this.id = this.props.match.params.id;
+      this.version = this.props.match.params.version;
+      this.setState({package: undefined});
+      this.componentDidMount();
+    }
   }
 
   public componentDidMount() {
@@ -82,7 +107,8 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
       const results = json as Registration.IRegistrationIndex;
 
       const latestVersion = results.items[0].upper;
-      let latestItem: Registration.IRegistrationPageItem | undefined;
+      let currentItem: Registration.IRegistrationPageItem | undefined;
+      let lastUpdate: Date | undefined;
 
       const versions: IPackageVersion[] = [];
 
@@ -93,40 +119,41 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
           version: entry.catalogEntry.version,
         });
 
-        if (entry.catalogEntry.version === latestVersion) {
-          latestItem = entry;
+        if ((!currentItem && entry.catalogEntry.version === latestVersion) ||
+          (this.version && entry.catalogEntry.version === this.version)) {
+          currentItem = entry;
+        }
+
+        const published = new Date(entry.catalogEntry.published);
+        if (!lastUpdate || lastUpdate < published) {
+          lastUpdate = published;
         }
       }
 
-      if (latestItem) {
+      if (currentItem && lastUpdate) {
         let readme = "";
-        if (!latestItem.catalogEntry.hasReadme) {
-          readme = latestItem.catalogEntry.description;
+        if (!currentItem.catalogEntry.hasReadme) {
+          readme = currentItem.catalogEntry.description;
         }
+
+        const isDotnetTool = (currentItem.catalogEntry.packageTypes &&
+          currentItem.catalogEntry.packageTypes.indexOf("DotnetTool") !== -1);
 
         this.setState({
           package: {
-            authors: latestItem.catalogEntry.authors,
-            dependencyGroups: latestItem.catalogEntry.dependencyGroups,
-            downloadUrl: latestItem.packageContent,
-            iconUrl: latestItem.catalogEntry.iconUrl,
-            id: latestItem.catalogEntry.id,
-            lastUpdate: new Date(latestItem.catalogEntry.published),
-            latestDownloads: latestItem.catalogEntry.downloads,
+            ...currentItem.catalogEntry,
+            downloadUrl: currentItem.packageContent,
+            isDotnetTool,
+            lastUpdate,
             latestVersion,
-            licenseUrl: latestItem.catalogEntry.licenseUrl,
-            projectUrl: latestItem.catalogEntry.projectUrl,
             readme,
-            repositoryType: latestItem.catalogEntry.repositoryType,
-            repositoryUrl: latestItem.catalogEntry.repositoryUrl,
-            tags: latestItem.catalogEntry.tags,
             totalDownloads: results.totalDownloads,
             versions
           }
         });
 
-        if (latestItem.catalogEntry.hasReadme) {
-          const readmeUrl = `/v3/package/${this.id}/${latestVersion}/readme`;
+        if (currentItem.catalogEntry.hasReadme) {
+          const readmeUrl = `/v3/package/${this.id}/${currentItem.catalogEntry.version}/readme`;
 
           fetch(readmeUrl, {signal: this.readmeController.signal}).then(response => {
             return response.text();
@@ -161,16 +188,17 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
             <div className="package-title">
               <h1>
                 {this.state.package.id}
-                <small className="text-nowrap">{this.state.package.latestVersion}</small>
+                <small className="text-nowrap">{this.state.package.version}</small>
               </h1>
 
             </div>
 
-            <InstallationInfo id={this.state.package.id} version={this.state.package.latestVersion} />
+            <InstallationInfo id={this.state.package.id} version={this.state.package.version} isDotnetTool={this.state.package.isDotnetTool} />
 
             {/* TODO: Fix this */}
             <div dangerouslySetInnerHTML={{ __html: this.state.package.readme }} />
 
+            <Dependents packageId={this.id} />
             <Dependencies dependencyGroups={this.state.package.dependencyGroups} />
           </article>
           <aside className="col-sm-3 package-details-info">
@@ -182,15 +210,17 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
                   <Icon iconName="History" className="ms-Icon" />
                   Last updated {timeago().format(this.state.package.lastUpdate)}
                 </li>
-                <li>
-                  <Icon iconName="Globe" className="ms-Icon" />
-                  <a href={this.state.package.projectUrl}>{this.state.package.projectUrl}</a>
-                </li>
+                {this.state.package.projectUrl &&
+                  <li>
+                    <Icon iconName="Globe" className="ms-Icon" />
+                    <a href={this.state.package.projectUrl}>{this.state.package.projectUrl}</a>
+                  </li>
+                }
                 <SourceRepository url={this.state.package.repositoryUrl} type={this.state.package.repositoryType} />
                 <LicenseInfo url={this.state.package.licenseUrl} />
                 <li>
                   <Icon iconName="CloudDownload" className="ms-Icon" />
-                  <a href={this.state.package.downloadUrl}>Download Package</a>
+                  <a href={this.state.package.downloadUrl}>Download package</a>
                 </li>
               </ul>
             </div>
@@ -205,7 +235,7 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
                 </li>
                 <li>
                   <Icon iconName="GiftBox" className="ms-Icon" />
-                  {this.state.package.latestDownloads.toLocaleString()} downloads of latest version
+                  {this.state.package.downloads.toLocaleString()} downloads of latest version
                 </li>
               </ul>
             </div>
@@ -215,7 +245,7 @@ class DisplayPackage extends React.Component<IDisplayPackageProps, IDisplayPacka
 
               {this.state.package.versions.map(value => (
                 <div key={value.version}>
-                  <span>v{value.version}: </span>
+                  <span><Link to={`/packages/${this.state.package!.id}/${value.version}`}>{value.version}</Link>: </span>
                   <span>{this.dateToString(value.date)}</span>
                 </div>
               ))}

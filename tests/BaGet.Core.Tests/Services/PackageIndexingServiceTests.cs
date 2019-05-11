@@ -1,6 +1,11 @@
-﻿using System.Threading.Tasks;
-using BaGet.Core.Services;
+using System.Threading.Tasks;
+using BaGet.Core.Configuration;
+using BaGet.Core.Indexing;
+using BaGet.Core.Search;
+using BaGet.Core.State;
+using BaGet.Core.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -23,6 +28,7 @@ namespace BaGet.Core.Tests.Services
                 _packages.Object,
                 _storage.Object,
                 _search.Object,
+                Mock.Of<IOptionsSnapshot<BaGetOptions>>(),
                 Mock.Of<ILogger<PackageIndexingService>>());
         }
 

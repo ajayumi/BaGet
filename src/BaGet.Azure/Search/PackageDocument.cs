@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Azure.Search;
 using Microsoft.Azure.Search.Models;
@@ -45,5 +45,20 @@ namespace BaGet.Azure.Search
 
         public string[] Versions { get; set;  }
         public string[] VersionDownloads { get; set; }
+
+        [IsSearchable]
+        [Analyzer(ExactMatchCustomAnalyzer.Name)]
+        public string[] Dependencies { get; set; }
+
+        [IsSearchable]
+        [Analyzer(ExactMatchCustomAnalyzer.Name)]
+        public string[] PackageTypes { get; set; }
+
+        [IsSearchable]
+        [Analyzer(ExactMatchCustomAnalyzer.Name)]
+        public string[] Frameworks { get; set; }
+
+        [IsFilterable]
+        public string SearchFilters { get; set; }
     }
 }
